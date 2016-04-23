@@ -1,4 +1,4 @@
-/*
+	/*
  * Pulse-Width-Modulation Code for K64
  * PWM signal can be connected to output pins PC3 and PC4
  * 
@@ -36,19 +36,23 @@
 #define MIN_SERVO_MOD 34
 #define MAX_SERVO_MOD 58
 
+#define THROW_OUT 20
+#define TRACK_WIDTH 80
 #define THRESHOLD 100
 #define DELTA 40
-#define POS_THRESH 200	
-#define NEG_THRESH -200
+#define POS_THRESH 250
+#define NEG_THRESH -250
 
 //Camera defines
 #define CAMERA_SI_PULSE_HIGH 20 //Number of cycles to give the SI Pulse High
 #define CAMERA_INTERGRATION_CYCLE 700 //Number of cycles for the intergraion time
 
-#define DIFFER_DRIVE_HIGH 70
-#define DIFFER_DRIVE_LOW 10
-#define DEAFULT_DRIVE 40
-#define STRIGHT_DRIVE 50
+#define SCALEDOWN .01
+
+#define DIFFER_DRIVE_HIGH 60
+#define DIFFER_DRIVE_LOW 10 
+#define DEAFULT_DRIVE 50
+#define STRIGHT_DRIVE 60
 #define DIFFER_KICK_IN 27
 
 #define JUST_DRIVE_STRIGHT 3
@@ -77,6 +81,7 @@ uint16_t cameraCaptureBuffer[128];
 uint16_t line[128];
 int16_t derivative_line[128];
 
+uint8_t last_valid_min, last_valid_max;
 uint8_t last_pos;
 
 //Line Decteing var
@@ -86,6 +91,7 @@ uint16_t line1;
 double output;
 uint16_t current_pos;
 
+uint16_t lastMin, lastMax;	
 
 uint8_t haveLineTimes;
 
@@ -382,19 +388,14 @@ void process()
 	averageLine();
 	derivative();
 	dectectLine();
-	
-	if(using_last_pos == 1)
-	{
-		output = 128-current_pos;
-		PIDcal(current_pos);
-	}
-	else
-	{
-		output = PIDcal(current_pos);
-	}
+	output = PIDcal(current_pos);
+
 	
 	//output = 128 - current_pos;
 	SetDutyCycleServo(output);
+	//SetDutyCycleMotor(LEFT_MOTOR, 40 );
+	//SetDutyCycleMotor(RIGHT_MOTOR, 40	);
+	
 	
 	if(output < 64 + JUST_DRIVE_STRIGHT && output > 64 - JUST_DRIVE_STRIGHT )
 	{
@@ -417,12 +418,14 @@ void process()
 		SetDutyCycleMotor(RIGHT_MOTOR, DEAFULT_DRIVE);
 		SetDutyCycleMotor(LEFT_MOTOR, DEAFULT_DRIVE);
 	}
+	
 }
 
 void averageLine()
 {
 	int i;
-	for(i=3 + 1;i<128 - 3 ;i++)
+
+	for(i=THROW_OUT;i<(128 - THROW_OUT) ;i++)
 	{
 			line[i] = (weights[0] * cameraCaptureBuffer[i] + weights[1] * cameraCaptureBuffer[i-1] + weights[2] * cameraCaptureBuffer[i+1] + weights[3] * cameraCaptureBuffer[i-2] + weights[4] * cameraCaptureBuffer[i+2]);
 	}
@@ -432,7 +435,7 @@ void averageLine()
 void derivative()
 {
 	int i;
-	for(i=3 + 2;i<128 - 3 ;i++)
+	for(i=THROW_OUT + 1;i<128 - THROW_OUT - 1 ;i++)
 	{
 			derivative_line[i] = line[i]-line[i-1];
 	}
@@ -449,43 +452,42 @@ void dectectLine()
 	min1= 0;
 	min1Val=0;
 
-	for(i=10;i<NUM_PIXELS-10;i++)
+	for(i=THROW_OUT + 1;i<NUM_PIXELS-THROW_OUT -1;i++)
 	{
-
-		if((derivative_line[i] > POS_THRESH) && (derivative_line[i] > max1Val) && (min1 != 0))
+		if( (derivative_line[i] < NEG_THRESH) && (derivative_line[i] < min1Val) ) //
 		{
-			max1Val = derivative_line[i];
-			max1 = i;
-		}
-		else if((derivative_line[i] < NEG_THRESH) && (derivative_line[i] < min1Val) && (max1 == 0))
-		{
+			last_valid_min = i;
 			min1Val = derivative_line[i];
 			min1 = i;
 		}
+		if( (derivative_line[i] > POS_THRESH) &&  (derivative_line[i] > max1Val)) //
+		{
+			last_valid_max = i;
+			max1Val = derivative_line[i];
+			max1 = i;
+		}
+		
 
-	}//end for
-	if((min1==0)||(max1 == 0) || (min1Val + max1Val > THRESHOLD) || (min1>=max1) || (max1 - min1 > DELTA ))
+	}
+	
+	
+	if(min1 == 0 && max1 == 0) //we are in the middle, not seeing either side of the track
 	{
-		current_pos = last_pos;
-		using_last_pos = 1;
+		current_pos = 64;
+	}
+	else if(min1 == 0) //only see the Right side
+	{
+		current_pos = max1 + TRACK_WIDTH /2 ;
+	}
+	else if(max1 == 0) //only see the left side
+	{
+		current_pos = min1 - TRACK_WIDTH/2;
 	}
 	else
 	{
-		using_last_pos = 0;
+		current_pos	= (min1 + max1) >> 1;
+	}
 
-		current_pos = (min1 + max1) >> 1;
-
-			
-			if(current_pos > 64)
-			{
-				last_pos = 128;
-				
-			}
-			else
-			{
-				last_pos = 0;
-			}
-		}
 	
 }
 
@@ -497,6 +499,18 @@ uint8_t getCurrentPosition()
 
 uint8_t get_output()
 {
-	return ((uint8_t) current_pos);
+	return ((uint8_t) output);
 }
+
+uint8_t get_last_min()
+{
+	return last_valid_min;
+}
+
+uint8_t get_last_max()
+{
+	return last_valid_max;
+}
+
+
 

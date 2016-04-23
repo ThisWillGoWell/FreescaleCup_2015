@@ -45,6 +45,8 @@ int main(void)
 		uart_getchar();
 		putByte(getCurrentPosition());
 		putByte(get_output());
+		putByte(get_last_min());
+		putByte(get_last_max());
 	
 		
 	}

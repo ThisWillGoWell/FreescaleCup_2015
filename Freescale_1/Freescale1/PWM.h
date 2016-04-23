@@ -24,7 +24,8 @@ void process(void);
 uint8_t getCurrentPosition(void);
 uint16_t* getCameraArray(void);
 uint8_t get_output(void);
-
+uint8_t get_last_min();
+uint8_t get_last_max();
 
 
 #endif /* PWM_H_ */

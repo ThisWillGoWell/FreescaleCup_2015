@@ -27,11 +27,11 @@ uint8_t PIDcal(uint8_t actual_position)
 	//Saturation Filter
 	if(output> MAX)
 	{
-	output= MAX;
+	output= MAX_TURN;
 	}
 	else if(output< MIN)
 	{
-	output= MIN;
+	output= MIN_TURN;
 	}
 	//Update error
 	pre_error= error;
