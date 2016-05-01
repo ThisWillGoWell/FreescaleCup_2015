@@ -23,6 +23,8 @@
 #define MOTOR_PWM_FREQUECNY 10000
 #define CAMERA_PWM_FREQUECNY 50000
 
+#define LEFT_MOTOR_CORRECT 1.1
+
 #define FTM0_MOD_VALUE			(CLOCK/MOTOR_PWM_FREQUECNY)
 #define FTM3_MOD_VALUE			(CLOCK/CAMERA_PWM_FREQUECNY)
 #define CAMERA_DUTY_CYCLE 50
@@ -36,24 +38,25 @@
 #define MIN_SERVO_MOD 34
 #define MAX_SERVO_MOD 58
 
-#define THROW_OUT 20
+#define LINE_OR_NOLINE_THRESHOLD (175)
+#define THROW_OUT 35
 #define TRACK_WIDTH 80
 #define THRESHOLD 100
 #define DELTA 40
 #define POS_THRESH 250
 #define NEG_THRESH -250
-
+#define OFFSET 6
 //Camera defines
 #define CAMERA_SI_PULSE_HIGH 20 //Number of cycles to give the SI Pulse High
-#define CAMERA_INTERGRATION_CYCLE 700 //Number of cycles for the intergraion time
+#define CAMERA_INTERGRATION_CYCLE 750 //Number of cycles for the intergraion time
 
-#define SCALEDOWN .01
+#define SCALEDOWN 80/100
 
-#define DIFFER_DRIVE_HIGH 60
-#define DIFFER_DRIVE_LOW 10 
-#define DEAFULT_DRIVE 50
-#define STRIGHT_DRIVE 60
-#define DIFFER_KICK_IN 27
+#define DIFFER_DRIVE_HIGH (80 * SCALEDOWN)
+#define DIFFER_DRIVE_LOW (20)
+#define DEAFULT_DRIVE (70 * SCALEDOWN)
+#define STRIGHT_DRIVE (75 * SCALEDOWN)
+#define DIFFER_KICK_IN (5)
 
 #define JUST_DRIVE_STRIGHT 3
 
@@ -63,7 +66,7 @@ void averageLine(void);
 
 void derivative(void);
 void dectectLine(void);
-uint8_t map(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t out_min, uint8_t out_max);
+int  map(int input, int in_min, int in_max, int out_min, int out_max);
 
 int PWMTick = 0;
 
@@ -83,6 +86,7 @@ int16_t derivative_line[128];
 
 uint8_t last_valid_min, last_valid_max;
 uint8_t last_pos;
+uint16_t line_sum;
 
 //Line Decteing var
 uint8_t min1, max1;
@@ -114,14 +118,20 @@ void InitPins(void);
 void SetDutyCycleMotor(unsigned int motorNum, unsigned int DutyCycle	)
 {
 	// Calculate the new cutoff value
+	
 	uint16_t mod = (uint16_t) (((CLOCK/MOTOR_PWM_FREQUECNY) * DutyCycle) / 100);
   
 	if(motorNum == LEFT_MOTOR)
 	{
+		DutyCycle = (unsigned int) (DutyCycle * LEFT_MOTOR_CORRECT);
+		if(DutyCycle > 100)
+			DutyCycle = 100;
+		mod = (uint16_t) (((CLOCK/MOTOR_PWM_FREQUECNY) * DutyCycle) / 100);
 		FTM0_C3V = mod;
 	}
 	else
 	{
+		
 		FTM0_C2V = mod;
 	}
 	/*/ Set outputs 
@@ -382,36 +392,37 @@ uint16_t* getCameraArray(void)
 
 
 
-
+int map(int input,int in_min,int in_max,int out_min,int out_max)
+{
+	return (input - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 void process()
 {	
 	averageLine();
 	derivative();
 	dectectLine();
-	output = PIDcal(current_pos);
-
+	output = PIDcal(current_pos + OFFSET
+	);
+	
 	
 	//output = 128 - current_pos;
 	SetDutyCycleServo(output);
 	//SetDutyCycleMotor(LEFT_MOTOR, 40 );
 	//SetDutyCycleMotor(RIGHT_MOTOR, 40	);
+	//SetDutyCycleMotor(LEFT_MOTOR, 0 );
+	//SetDutyCycleMotor(RIGHT_MOTOR, 0);	
 	
 	
-	if(output < 64 + JUST_DRIVE_STRIGHT && output > 64 - JUST_DRIVE_STRIGHT )
-	{
-		SetDutyCycleMotor(LEFT_MOTOR,  STRIGHT_DRIVE );
-		SetDutyCycleMotor(RIGHT_MOTOR, STRIGHT_DRIVE );
-		
-	}
 	if (output > 64 + DIFFER_KICK_IN)
 	{
-		SetDutyCycleMotor(LEFT_MOTOR,  DIFFER_DRIVE_HIGH);
-		SetDutyCycleMotor(RIGHT_MOTOR, DIFFER_DRIVE_LOW);
+		
+		SetDutyCycleMotor(LEFT_MOTOR,  map(output, 64 + DIFFER_KICK_IN, 128, DEAFULT_DRIVE, DIFFER_DRIVE_HIGH));
+		SetDutyCycleMotor(RIGHT_MOTOR, map(output, 64 + DIFFER_KICK_IN, 128, DEAFULT_DRIVE, DIFFER_DRIVE_LOW));
 	}
 	else if (output < 64 - DIFFER_KICK_IN)
 	{
-		SetDutyCycleMotor(RIGHT_MOTOR, DIFFER_DRIVE_HIGH);
-		SetDutyCycleMotor(LEFT_MOTOR,  DIFFER_DRIVE_LOW);
+		SetDutyCycleMotor(RIGHT_MOTOR, map(output, 64 - DIFFER_KICK_IN, 0, DEAFULT_DRIVE, DIFFER_DRIVE_HIGH));
+	  SetDutyCycleMotor(LEFT_MOTOR,  map(output, 64 - DIFFER_KICK_IN, 0, DEAFULT_DRIVE, DIFFER_DRIVE_LOW));
 	}
 	else
 	{
@@ -451,18 +462,19 @@ void dectectLine()
 
 	min1= 0;
 	min1Val=0;
-
+	last_valid_max = 0;
+	last_valid_min = 0;
 	for(i=THROW_OUT + 1;i<NUM_PIXELS-THROW_OUT -1;i++)
 	{
 		if( (derivative_line[i] < NEG_THRESH) && (derivative_line[i] < min1Val) ) //
 		{
-			last_valid_min = i;
+			last_valid_max = i;
 			min1Val = derivative_line[i];
 			min1 = i;
 		}
 		if( (derivative_line[i] > POS_THRESH) &&  (derivative_line[i] > max1Val)) //
 		{
-			last_valid_max = i;
+			last_valid_min = i;
 			max1Val = derivative_line[i];
 			max1 = i;
 		}
@@ -473,15 +485,37 @@ void dectectLine()
 	
 	if(min1 == 0 && max1 == 0) //we are in the middle, not seeing either side of the track
 	{
-		current_pos = 64;
+		line_sum = 0;
+		//Figure out are we seeing nothing or are we seeing only white
+		for(i = THROW_OUT + 1; i < NUM_PIXELS - THROW_OUT - 1; i++)
+		{
+			line_sum +=  (line[i] >> 4);
+		}
+		if(line_sum / (NUM_PIXELS - 2 * THROW_OUT) < LINE_OR_NOLINE_THRESHOLD)
+		{
+			if(last_pos == 1)
+			{
+				current_pos = 128;
+			}
+			else
+			{
+				current_pos = 0;
+			}
+		}
+		else
+		{
+			current_pos = 64;
+		}
 	}
 	else if(min1 == 0) //only see the Right side
 	{
 		current_pos = max1 + TRACK_WIDTH /2 ;
+		last_pos = 1;
 	}
 	else if(max1 == 0) //only see the left side
 	{
 		current_pos = min1 - TRACK_WIDTH/2;
+		last_pos = 0;
 	}
 	else
 	{

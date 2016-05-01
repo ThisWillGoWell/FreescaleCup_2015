@@ -7,13 +7,13 @@
 
 #define epsilon (0.01)
 #define dt ((float) 0.02) //100mslooptime
-#define MAX 100 //ForCurrent Saturation
-#define MIN 20
+#define MAX 128 //FIf the number is outside thoese ranges, we simply set it to max or ,min turn
+#define MIN 0
 #define MAX_TURN 128
 #define MIN_TURN 0
-#define Kp 1
-#define Kd 0.02
-#define Ki 0.0
+#define Kp 1.0
+#define Kd 0.05
+#define Ki 0.00
 
 #define setpoint 64
 

@@ -45,10 +45,14 @@ PWM.c: 3 warnings, 0 errors
 assembling startup_MK64F12.s...
 compiling UART.c...
 compiling PID.c...
+PID.c(32): warning:  #186-D: pointless comparison of unsigned integer with zero
+  	else if(output< 
+IN)
+PID.c: 1 warning, 0 errors
 compiling system_MK64F12.c...
 linking...
-Program Size: Code=5684 RO-data=1056 RW-data=152 ZI-data=1888  
-".\Objects\CarGoGo.axf" - 0 Error(s), 5 Warning(s).
+Program Size: Code=5936 RO-data=1056 RW-data=152 ZI-data=1888  
+".\Objects\CarGoGo.axf" - 0 Error(s), 6 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -74,9 +78,9 @@ Package Vendor: Keil
    * Component: ARM::CMSIS:CORE:4.3.0
 
    * Component: Keil::Device:Startup:1.0.0
-      Source file:   Device\Source\ARM\startup_MK64F12.s
       Source file:   Device\Source\system_MK64F12.c
-Build Time Elapsed:  00:00:03
+      Source file:   Device\Source\ARM\startup_MK64F12.s
+Build Time Elapsed:  00:00:02
 </pre>
 </body>
 </html>
