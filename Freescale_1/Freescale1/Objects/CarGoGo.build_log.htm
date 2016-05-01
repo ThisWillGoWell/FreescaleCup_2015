@@ -22,7 +22,7 @@ Dialog DLL:      TCM.DLL V1.14.8.0
  
 <h2>Project:</h2>
 C:\Users\Willi\OneDrive\Code\NXP Cup\Freescale_car\Freescale_1\Freescale1\CarGoGo.uvprojx
-Project File Date:  04/23/2016
+Project File Date:  05/01/2016
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 1 (build 61)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
@@ -41,18 +41,19 @@ PWM.h(28): warning:  #1295-D: Deprecated declaration get_last_max - give arg typ
   uint8_t get_last_max();
 analog_read.h(7): warning:  #1-D: last line of file ends without a newline
   	
-PWM.c: 3 warnings, 0 errors
+PWM.c(440): warning:  #177-D: variable "status" was declared but never referenced
+  	char status;
+PWM.c(525): warning:  #68-D: integer conversion resulted in a change of sign
+  	last_transistion = -1;
+PWM.c: 5 warnings, 0 errors
+compiling Line.c...
 assembling startup_MK64F12.s...
 compiling UART.c...
 compiling PID.c...
-PID.c(32): warning:  #186-D: pointless comparison of unsigned integer with zero
-  	else if(output< 
-IN)
-PID.c: 1 warning, 0 errors
 compiling system_MK64F12.c...
 linking...
-Program Size: Code=5936 RO-data=1056 RW-data=152 ZI-data=1888  
-".\Objects\CarGoGo.axf" - 0 Error(s), 6 Warning(s).
+Program Size: Code=6344 RO-data=1056 RW-data=208 ZI-data=1888  
+".\Objects\CarGoGo.axf" - 0 Error(s), 7 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -80,7 +81,7 @@ Package Vendor: Keil
    * Component: Keil::Device:Startup:1.0.0
       Source file:   Device\Source\system_MK64F12.c
       Source file:   Device\Source\ARM\startup_MK64F12.s
-Build Time Elapsed:  00:00:02
+Build Time Elapsed:  00:00:03
 </pre>
 </body>
 </html>

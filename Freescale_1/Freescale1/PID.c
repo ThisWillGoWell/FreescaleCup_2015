@@ -7,13 +7,13 @@
 char string[100];
 
 int abs(int v);
-uint8_t PIDcal(uint8_t actual_position)
+int PIDcal(int actual_position)
 {
 	static double pre_error= 0;
 	static double integral=0;
 	double error;
 	double derivative;
-	uint8_t	 output;
+	double	 output;
 
 	//CaculateP,I,D
 	error = setpoint - actual_position;
@@ -27,11 +27,11 @@ uint8_t PIDcal(uint8_t actual_position)
 	//Saturation Filter
 	if(output> MAX)
 	{
-	output= MAX_TURN;
+	output= 128;
 	}
 	else if(output< MIN)
 	{
-	output= MIN_TURN;
+	output= 0;
 	}
 	//Update error
 	pre_error= error;

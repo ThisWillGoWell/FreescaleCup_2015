@@ -45,17 +45,22 @@
 #define DELTA 40
 #define POS_THRESH 250
 #define NEG_THRESH -250
-#define OFFSET 6
+#define OFFSET -6
+
+#define TRANSISTION_STOP_COUNT 4
+#define TRANSISTION_NEG_TREHSHOLD -200
+#define TRANSISTION_POS_TREHSHOLD 200
+
 //Camera defines
 #define CAMERA_SI_PULSE_HIGH 20 //Number of cycles to give the SI Pulse High
 #define CAMERA_INTERGRATION_CYCLE 750 //Number of cycles for the intergraion time
 
-#define SCALEDOWN 80/100
+#define SCALEDOWN 100/100
 
-#define DIFFER_DRIVE_HIGH (80 * SCALEDOWN)
-#define DIFFER_DRIVE_LOW (20)
+#define DIFFER_DRIVE_HIGH (65 * SCALEDOWN)
+#define DIFFER_DRIVE_LOW (15)
 #define DEAFULT_DRIVE (70 * SCALEDOWN)
-#define STRIGHT_DRIVE (75 * SCALEDOWN)
+#define STRIGHT_DRIVE (80 * SCALEDOWN)
 #define DIFFER_KICK_IN (5)
 
 #define JUST_DRIVE_STRIGHT 3
@@ -88,12 +93,16 @@ uint8_t last_valid_min, last_valid_max;
 uint8_t last_pos;
 uint16_t line_sum;
 
-//Line Decteing var
+//Line Stop Decteing var
+char last_transistion;
+int transistion_count; 
+char running = 1;
+
 uint8_t min1, max1;
 int min1Val, max1Val;
 uint16_t line1;
 double output;
-uint16_t current_pos;
+int current_pos;
 
 uint16_t lastMin, lastMax;	
 
@@ -102,11 +111,15 @@ uint8_t haveLineTimes;
 int currentCameraTick;
 int fallingEdge;
 int currentLineRead;
+char processing = 0;
+
 
 int using_last_pos;
 
 double weights [5] = {0.4, 0.2, 0.2, 0.1, 0.1};
-
+double speed_modifers[4] = {1, 0.8, 0.6, 0};
+char speed_modifer_index = 0;
+char use_stop = 1;
 void InitPins(void);
 
 /*
@@ -117,9 +130,10 @@ void InitPins(void);
  */
 void SetDutyCycleMotor(unsigned int motorNum, unsigned int DutyCycle	)
 {
+	uint16_t mod;
 	// Calculate the new cutoff value
-	
-	uint16_t mod = (uint16_t) (((CLOCK/MOTOR_PWM_FREQUECNY) * DutyCycle) / 100);
+	DutyCycle = (unsigned int) DutyCycle * (speed_modifers[speed_modifer_index]);
+	mod = (uint16_t) (((CLOCK/MOTOR_PWM_FREQUECNY) * DutyCycle) / 100);
   
 	if(motorNum == LEFT_MOTOR)
 	{
@@ -238,9 +252,16 @@ void PIT0_IRQHandler(void)
 			ADC1_SC1A = 0x00000001;
 		}
 		
-		
+		if(currentCameraTick > 129)
+		{
+			if(processing == 0)
+			{
+				processing = 1;
+			}
+		}
 		if(currentCameraTick > (129 + CAMERA_INTERGRATION_CYCLE))
 		{
+			
 			currentCameraTick = 0;
 		}
 		else
@@ -359,14 +380,18 @@ void InitPWM()
 void InitPins()
 {
 	
-			// Enable clock on PORT A so it can output
+			// Enable clock on PORT A so it can input
+	
 	SIM_SCGC5 |= SIM_SCGC5_PORTA_MASK | SIM_SCGC5_PORTB_MASK | SIM_SCGC5_PORTC_MASK | SIM_SCGC5_PORTD_MASK ;
 	
 	
 	//FTM 0
 	PORTC_PCR3  = PORT_PCR_MUX(4)  | PORT_PCR_DSE_MASK; //FTM 0 Ch2
 	PORTC_PCR4  = PORT_PCR_MUX(4)  | PORT_PCR_DSE_MASK;//FTM 0 Ch3
-
+	
+	PORTC_PCR16 = PORT_PCR_MUX(1);
+	GPIOC_PDDR  = 0;
+	
 
 	
 	//FTM3 Clock
@@ -383,6 +408,19 @@ void InitPins()
 	//GPIOB_PDDR =  (1<<22);
 	GPIOD_PDDR |= 2; 
 	PORTD_PCR1 = PORT_PCR_MUX(1)  | PORT_PCR_DSE_MASK;
+	
+	//Enable Port A, pins 0, 1, 2 for status inputs
+	
+	PORTA_PCR0 = PORT_PCR_MUX(0) ;
+	PORTA_PCR1 = PORT_PCR_MUX(1) ;
+	PORTA_PCR2 = PORT_PCR_MUX(1) ;
+	PORTA_PCR3 = PORT_PCR_MUX(0);
+	PORTA_PCR4 = PORT_PCR_MUX(0);
+	PORTA_PCR5 = PORT_PCR_MUX(0);
+
+	GPIOA_PDDR = 0;
+	
+	
 }
 
 uint16_t* getCameraArray(void)
@@ -396,13 +434,23 @@ int map(int input,int in_min,int in_max,int out_min,int out_max)
 {
 	return (input - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
+
+void checkStatus()
+{
+	char status;
+	//Read the PORTA
+		
+	speed_modifer_index = (GPIOA_PDIR >> 1); //speed index is bit 0,1
+	use_stop = (GPIOC_PDIR >> 16) & 1; // use stop is bit 2
+	
+}
 void process()
 {	
+	checkStatus();
 	averageLine();
 	derivative();
 	dectectLine();
-	output = PIDcal(current_pos + OFFSET
-	);
+	output = PIDcal(current_pos + OFFSET	);
 	
 	
 	//output = 128 - current_pos;
@@ -411,24 +459,32 @@ void process()
 	//SetDutyCycleMotor(RIGHT_MOTOR, 40	);
 	//SetDutyCycleMotor(LEFT_MOTOR, 0 );
 	//SetDutyCycleMotor(RIGHT_MOTOR, 0);	
-	
-	
-	if (output > 64 + DIFFER_KICK_IN)
+	if(running == 0 && use_stop == 1)
 	{
-		
-		SetDutyCycleMotor(LEFT_MOTOR,  map(output, 64 + DIFFER_KICK_IN, 128, DEAFULT_DRIVE, DIFFER_DRIVE_HIGH));
-		SetDutyCycleMotor(RIGHT_MOTOR, map(output, 64 + DIFFER_KICK_IN, 128, DEAFULT_DRIVE, DIFFER_DRIVE_LOW));
-	}
-	else if (output < 64 - DIFFER_KICK_IN)
-	{
-		SetDutyCycleMotor(RIGHT_MOTOR, map(output, 64 - DIFFER_KICK_IN, 0, DEAFULT_DRIVE, DIFFER_DRIVE_HIGH));
-	  SetDutyCycleMotor(LEFT_MOTOR,  map(output, 64 - DIFFER_KICK_IN, 0, DEAFULT_DRIVE, DIFFER_DRIVE_LOW));
+		SetDutyCycleMotor(RIGHT_MOTOR, 0);
+		SetDutyCycleMotor(LEFT_MOTOR, 0);
 	}
 	else
 	{
-		SetDutyCycleMotor(RIGHT_MOTOR, DEAFULT_DRIVE);
-		SetDutyCycleMotor(LEFT_MOTOR, DEAFULT_DRIVE);
+	
+		if (output > 64 + DIFFER_KICK_IN)
+		{
+			
+			SetDutyCycleMotor(LEFT_MOTOR,  map(output, 64 + DIFFER_KICK_IN, 128, DEAFULT_DRIVE, DIFFER_DRIVE_HIGH));
+			SetDutyCycleMotor(RIGHT_MOTOR, map(output, 64 + DIFFER_KICK_IN, 128, DEAFULT_DRIVE, DIFFER_DRIVE_LOW));
+		}
+		else if (output < 64 - DIFFER_KICK_IN)
+		{
+			SetDutyCycleMotor(RIGHT_MOTOR, map(output, 64 - DIFFER_KICK_IN, 0, DEAFULT_DRIVE, DIFFER_DRIVE_HIGH));
+			SetDutyCycleMotor(LEFT_MOTOR,  map(output, 64 - DIFFER_KICK_IN, 0, DEAFULT_DRIVE, DIFFER_DRIVE_LOW));
+		}
+		else
+		{
+			SetDutyCycleMotor(RIGHT_MOTOR, DEAFULT_DRIVE);
+			SetDutyCycleMotor(LEFT_MOTOR, DEAFULT_DRIVE);
+		}
 	}
+	
 	
 }
 
@@ -464,19 +520,47 @@ void dectectLine()
 	min1Val=0;
 	last_valid_max = 0;
 	last_valid_min = 0;
+	
+	transistion_count = 0;
+	last_transistion = -1;
+	
 	for(i=THROW_OUT + 1;i<NUM_PIXELS-THROW_OUT -1;i++)
 	{
-		if( (derivative_line[i] < NEG_THRESH) && (derivative_line[i] < min1Val) ) //
+		
+		if( (derivative_line[i] < TRANSISTION_NEG_TREHSHOLD)) //
 		{
-			last_valid_max = i;
+			if(last_transistion != 0) //has the transistion changed?
+			{
+				transistion_count++;
+				last_transistion = 0;
+			}
+			if((derivative_line[i] < min1Val) && derivative_line[i] < NEG_THRESH)
+			{
+			last_valid_min = i;
 			min1Val = derivative_line[i];
 			min1 = i;
+		
+			}
 		}
-		if( (derivative_line[i] > POS_THRESH) &&  (derivative_line[i] > max1Val)) //
+		if( (derivative_line[i] > TRANSISTION_POS_TREHSHOLD) ) //
 		{
-			last_valid_min = i;
+			if(last_transistion != 1)
+			{
+				transistion_count++;
+				last_transistion = 1;
+			}
+			
+			if( (derivative_line[i] > max1Val) && derivative_line[i] > POS_THRESH)
+			{
+			last_valid_max = i;
 			max1Val = derivative_line[i];
 			max1 = i;
+			}
+		}
+
+		if(transistion_count >= TRANSISTION_STOP_COUNT)
+		{
+			running = 0;
 		}
 		
 
